@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Docker 命令转 Compose 配置</title>
+    <style>
+        :root {
+            --primary-color: #2496ed;
+            --secondary-color: #f8f9fa;
+            --border-color: #dee2e6;
+            --success-color: #28a745;
+            --error-color: #dc3545;
+        }
+        
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f0f2f5;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        header {
+            grid-column: 1 / -1;
+            text-align: center;
+            margin-bottom: 20px;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            color: var(--primary-color);
+            margin-bottom: 10px;
+        }
+        
+        .panel {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .panel h2 {
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--border-color);
+            color: var(--primary-color);
+        }
+        
+        .input-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+        }
+        
+        input[type="text"], 
+        textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 16px;
+        }
+        
+        textarea {
+            min-height: 150px;
+            resize: vertical;
+        }
+        
+        .checkbox-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        button {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: background-color 0.3s;
+            margin-top: 10px;
+        }
+        
+        button:hover {
+            background-color: #1a7bc9;
+        }
+        
+        .output {
+            background-color: var(--secondary-color);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 15px;
+            min-height: 300px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            overflow-x: auto;
+            flex-grow: 1;
+        }
+        
+        .highlight {
+            color: var(--primary-color);
+            font-weight: bold;
+        }
+        
+        .example {
+            background-color: #f8f9fa;
+            border-left: 4px solid var(--primary-color);
+            padding: 10px;
+            margin: 15px 0;
+            font-size: 14px;
+        }
+        
+        .success {
+            color: var(--success-color);
+        }
+        
+        .error {
+            color: var(--error-color);
+        }
+        
+        .hint {
+            font-size: 14px;
+            color: #6c757d;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Docker 命令转 Compose 配置工具</h1>
+            <p>将 Docker 命令行参数转换为 Docker Compose YAML 配置文件</p>
+        </header>
+        
+        <div class="panel">
+            <h2>输入 Docker 命令</h2>
+            <div class="input-group">
+                <label for="dockerCommand">Docker 命令（以 "docker run" 开头）</label>
+                <textarea id="dockerCommand" placeholder="docker run -d --name myapp -p 8080:80 -v /host/path:/container/path nginx:alpine">docker run -d --name myapp -p 8080:80 -v /host/path:/container/path nginx:alpine</textarea>
+                <div class="hint">示例命令: docker run -d --name redis -p 6379:6379 -v redis-data:/data redis:6.0-alpine</div>
+            </div>
+            
+            <div class="input-group">
+                <label for="serviceName">服务名称（可选）</label>
+                <input type="text" id="serviceName" placeholder="my-service">
+                <div class="hint">如果留空，将使用容器名称或镜像名称</div>
+            </div>
+            
+            <div class="input-group">
+                <label>常用选项</label>
+                <div class="checkbox-group">
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="detachMode" checked>
+                        <label for="detachMode">后台运行 (-d)</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="restartPolicy">
+                        <label for="restartPolicy">自动重启 (--restart)</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="privilegedMode">
+                        <label for="privilegedMode">特权模式 (--privileged)</label>
+                    </div>
+                </div>
+            </div>
+            
+            <button id="convertBtn">转换为 Compose 配置</button>
+            <button id="copyBtn" style="background-color: #6c757d;">复制到剪贴板</button>
+        </div>
+        
+        <div class="panel">
+            <h2>生成的 Compose 配置</h2>
+            <div class="output" id="output"></div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const dockerCommand = document.getElementById('dockerCommand');
+            const serviceName = document.getElementById('serviceName');
+            const output = document.getElementById('output');
+            const convertBtn = document.getElementById('convertBtn');
+            const copyBtn = document.getElementById('copyBtn');
+            
+            // 初始显示示例配置
+            output.textContent = `# 生成的 Docker Compose 配置将显示在这里
+            
+version: '3.8'
+services:
+  my-service:
+    image: nginx:alpine
+    container_name: myapp
+    ports:
+      - "8080:80"
+    volumes:
+      - /host/path:/container/path
+    restart: unless-stopped`;
+            
+            convertBtn.addEventListener('click', convertCommand);
+            copyBtn.addEventListener('click', copyToClipboard);
+            
+            function convertCommand() {
+                const command = dockerCommand.value.trim();
+                
+                if (!command) {
+                    output.textContent = '# 错误：请输入 Docker 命令';
+                    output.classList.add('error');
+                    return;
+                }
+                
+                if (!command.startsWith('docker run')) {
+                    output.textContent = '# 错误：命令必须以 "docker run" 开头';
+                    output.classList.add('error');
+                    return;
+                }
+                
+                try {
+                    const composeConfig = parseDockerCommand(command);
+                    output.textContent = composeConfig;
+                    output.classList.remove('error');
+                    output.classList.add('success');
+                } catch (error) {
+                    output.textContent = `# 错误: ${error.message}`;
+                    output.classList.add('error');
+                }
+            }
+            
+            function parseDockerCommand(command) {
+                // 移除开头的 "docker run"
+                let args = command.replace(/^docker run\s*/, '');
+                
+                // 提取服务名称
+                const customServiceName = serviceName.value.trim();
+                const service = customServiceName || 'my-service';
+                
+                // 初始化配置对象
+                const config = {
+                    version: "'3.8'",
+                    services: {
+                        [service]: {
+                            image: '',
+                            container_name: '',
+                            ports: [],
+                            volumes: [],
+                            environment: [],
+                            networks: [],
+                            restart: 'no',
+                            privileged: false
+                        }
+                    },
+                    volumes: {},
+                    networks: {}
+                };
+                
+                // 解析常见参数
+                const tokens = args.split(/\s+/);
+                let i = 0;
+                
+                // 处理标志参数
+                while (i < tokens.length) {
+                    const token = tokens[i];
+                    
+                    // 后台运行模式
+                    if (token === '-d' || token === '--detach') {
+                        // Compose 默认在后台运行
+                        i++;
+                        continue;
+                    }
+                    
+                    // 容器名称
+                    if (token === '--name') {
+                        config.services[service].container_name = tokens[i+1];
+                        i += 2;
+                        continue;
+                    }
+                    
+                    // 端口映射
+                    if (token === '-p' || token === '--publish') {
+                        config.services[service].ports.push(`"${tokens[i+1]}"`);
+                        i += 2;
+                        continue;
+                    }
+                    
+                    // 卷映射
+                    if (token === '-v' || token === '--volume') {
+                        const volume = tokens[i+1];
+                        config.services[service].volumes.push(`"${volume}"`);
+                        
+                        // 检查是否命名卷
+                        if (volume.includes(':') && !volume.startsWith('/') && !volume.startsWith('~')) {
+                            const volName = volume.split(':')[0];
+                            if (!config.volumes[volName]) {
+                                config.volumes[volName] = {};
+                            }
+                        }
+                        i += 2;
+                        continue;
+                    }
+                    
+                    // 环境变量
+                    if (token === '-e' || token === '--env') {
+                        config.services[service].environment.push(`"${tokens[i+1]}"`);
+                        i += 2;
+                        continue;
+                    }
+                    
+                    // 重启策略
+                    if (token === '--restart') {
+                        config.services[service].restart = tokens[i+1];
+                        i += 2;
+                        continue;
+                    }
+                    
+                    // 特权模式
+                    if (token === '--privileged') {
+                        config.services[service].privileged = true;
+                        i++;
+                        continue;
+                    }
+                    
+                    // 网络
+                    if (token === '--network') {
+                        const network = tokens[i+1];
+                        config.services[service].networks.push(network);
+                        
+                        if (!config.networks[network]) {
+                            config.networks[network] = { external: true };
+                        }
+                        i += 2;
+                        continue;
+                    }
+                    
+                    // 如果遇到非选项参数，则认为是镜像和命令
+                    if (!token.startsWith('-')) {
+                        // 第一个非选项参数是镜像
+                        if (!config.services[service].image) {
+                            config.services[service].image = token;
+                        } else {
+                            // 剩余部分是命令
+                            const command = tokens.slice(i).join(' ');
+                            if (command) {
+                                config.services[service].command = `"${command}"`;
+                            }
+                            break;
+                        }
+                    }
+                    
+                    i++;
+                }
+                
+                // 应用选项中的设置
+                if (document.getElementById('restartPolicy').checked) {
+                    config.services[service].restart = 'unless-stopped';
+                }
+                
+                if (document.getElementById('privilegedMode').checked) {
+                    config.services[service].privileged = true;
+                }
+                
+                // 生成 YAML 字符串
+                let yaml = `version: ${config.version}\n\nservices:\n`;
+                
+                // 服务配置
+                for (const [sName, sConfig] of Object.entries(config.services)) {
+                    yaml += `  ${sName}:\n`;
+                    yaml += `    image: ${sConfig.image}\n`;
+                    
+                    if (sConfig.container_name) {
+                        yaml += `    container_name: ${sConfig.container_name}\n`;
+                    }
+                    
+                    if (sConfig.ports.length > 0) {
+                        yaml += `    ports:\n`;
+                        sConfig.ports.forEach(p => yaml += `      - ${p}\n`);
+                    }
+                    
+                    if (sConfig.volumes.length > 0) {
+                        yaml += `    volumes:\n`;
+                        sConfig.volumes.forEach(v => yaml += `      - ${v}\n`);
+                    }
+                    
+                    if (sConfig.environment.length > 0) {
+                        yaml += `    environment:\n`;
+                        sConfig.environment.forEach(e => yaml += `      - ${e}\n`);
+                    }
+                    
+                    if (sConfig.networks.length > 0) {
+                        yaml += `    networks:\n`;
+                        sConfig.networks.forEach(n => yaml += `      - ${n}\n`);
+                    }
+                    
+                    if (sConfig.restart && sConfig.restart !== 'no') {
+                        yaml += `    restart: ${sConfig.restart}\n`;
+                    }
+                    
+                    if (sConfig.privileged) {
+                        yaml += `    privileged: true\n`;
+                    }
+                    
+                    if (sConfig.command) {
+                        yaml += `    command: ${sConfig.command}\n`;
+                    }
+                }
+                
+                // 卷配置
+                if (Object.keys(config.volumes).length > 0) {
+                    yaml += `\nvolumes:\n`;
+                    for (const [vName, vConfig] of Object.entries(config.volumes)) {
+                        yaml += `  ${vName}:\n`;
+                        // 简单卷没有额外配置
+                    }
+                }
+                
+                // 网络配置
+                if (Object.keys(config.networks).length > 0) {
+                    yaml += `\nnetworks:\n`;
+                    for (const [nName, nConfig] of Object.entries(config.networks)) {
+                        yaml += `  ${nName}:\n`;
+                        if (nConfig.external) {
+                            yaml += `    external: true\n`;
+                        }
+                    }
+                }
+                
+                return yaml;
+            }
+            
+            function copyToClipboard() {
+                const text = output.textContent;
+                navigator.clipboard.writeText(text)
+                    .then(() => {
+                        const originalText = copyBtn.textContent;
+                        copyBtn.textContent = '已复制!';
+                        copyBtn.style.backgroundColor = 'var(--success-color)';
+                        setTimeout(() => {
+                            copyBtn.textContent = originalText;
+                            copyBtn.style.backgroundColor = '#6c757d';
+                        }, 2000);
+                    })
+                    .catch(err => {
+                        console.error('复制失败: ', err);
+                        alert('复制失败，请手动复制内容');
+                    });
+            }
+        });
+    </script>
+</body>
+</html>
