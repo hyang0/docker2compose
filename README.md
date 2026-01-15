@@ -2,6 +2,10 @@
 
 这是一个纯前端工具，用于将复杂的 `docker run` 命令转换为 `docker-compose.yml` 配置文件。
 
+## 截图
+
+![](./images/screenshot.png)
+
 ## 功能特性
 
 - ⚡ **即时转换**: 在浏览器中直接运行，无需后端服务。
