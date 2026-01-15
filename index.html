@@ -283,10 +283,16 @@ services:
                         [service]: {
                             image: '',
                             container_name: '',
+                            hostname: '',
+                            working_dir: '',
                             ports: [],
                             volumes: [],
                             environment: [],
                             networks: [],
+                            labels: [],
+                            logging: {
+                                options: {}
+                            },
                             restart: 'no',
                             privileged: false
                         }
@@ -303,73 +309,126 @@ services:
                 while (i < tokens.length) {
                     const token = tokens[i];
                     
+                    // 处理由多行命令复制而来的行尾反斜杠 "\"，直接忽略
+                    if (token === '\\') {
+                        i++;
+                        continue;
+                    }
+                    
+                    let option = token;
+                    let valueFromEquals = null;
+                    
+                    if (token.startsWith('-') && token.includes('=')) {
+                        const eqIndex = token.indexOf('=');
+                        option = token.slice(0, eqIndex);
+                        valueFromEquals = token.slice(eqIndex + 1);
+                    }
+                    
                     // 后台运行模式
-                    if (token === '-d' || token === '--detach') {
-                        // Compose 默认在后台运行
+                    if (option === '-d' || option === '--detach') {
                         i++;
                         continue;
                     }
                     
                     // 容器名称
-                    if (token === '--name') {
-                        config.services[service].container_name = tokens[i+1];
-                        i += 2;
+                    if (option === '--name') {
+                        const value = valueFromEquals !== null ? valueFromEquals : tokens[i+1];
+                        config.services[service].container_name = value;
+                        i += valueFromEquals !== null ? 1 : 2;
+                        continue;
+                    }
+                    
+                    // 主机名
+                    if (option === '--hostname') {
+                        const value = valueFromEquals !== null ? valueFromEquals : tokens[i+1];
+                        config.services[service].hostname = value;
+                        i += valueFromEquals !== null ? 1 : 2;
                         continue;
                     }
                     
                     // 端口映射
-                    if (token === '-p' || token === '--publish') {
-                        config.services[service].ports.push(`"${tokens[i+1]}"`);
-                        i += 2;
+                    if (option === '-p' || option === '--publish') {
+                        const value = valueFromEquals !== null ? valueFromEquals : tokens[i+1];
+                        config.services[service].ports.push(`"${value}"`);
+                        i += valueFromEquals !== null ? 1 : 2;
+                        continue;
+                    }
+                    
+                    // 工作目录
+                    if (option === '--workdir' || option === '-w') {
+                        const value = valueFromEquals !== null ? valueFromEquals : tokens[i+1];
+                        config.services[service].working_dir = value;
+                        i += valueFromEquals !== null ? 1 : 2;
                         continue;
                     }
                     
                     // 卷映射
-                    if (token === '-v' || token === '--volume') {
-                        const volume = tokens[i+1];
+                    if (option === '-v' || option === '--volume') {
+                        const volume = valueFromEquals !== null ? valueFromEquals : tokens[i+1];
                         config.services[service].volumes.push(`"${volume}"`);
                         
-                        // 检查是否命名卷
                         if (volume.includes(':') && !volume.startsWith('/') && !volume.startsWith('~')) {
                             const volName = volume.split(':')[0];
                             if (!config.volumes[volName]) {
                                 config.volumes[volName] = {};
                             }
                         }
-                        i += 2;
+                        i += valueFromEquals !== null ? 1 : 2;
                         continue;
                     }
                     
                     // 环境变量
-                    if (token === '-e' || token === '--env') {
-                        config.services[service].environment.push(`"${tokens[i+1]}"`);
-                        i += 2;
+                    if (option === '-e' || option === '--env') {
+                        const value = valueFromEquals !== null ? valueFromEquals : tokens[i+1];
+                        config.services[service].environment.push(`"${value}"`);
+                        i += valueFromEquals !== null ? 1 : 2;
                         continue;
                     }
                     
                     // 重启策略
-                    if (token === '--restart') {
-                        config.services[service].restart = tokens[i+1];
-                        i += 2;
+                    if (option === '--restart') {
+                        const value = valueFromEquals !== null ? valueFromEquals : tokens[i+1];
+                        config.services[service].restart = value;
+                        i += valueFromEquals !== null ? 1 : 2;
                         continue;
                     }
                     
                     // 特权模式
-                    if (token === '--privileged') {
+                    if (option === '--privileged') {
                         config.services[service].privileged = true;
                         i++;
                         continue;
                     }
                     
+                    // 标签
+                    if (option === '--label' || option === '-l') {
+                        const value = valueFromEquals !== null ? valueFromEquals : tokens[i+1];
+                        config.services[service].labels.push(`"${value}"`);
+                        i += valueFromEquals !== null ? 1 : 2;
+                        continue;
+                    }
+                    
+                    // 日志选项
+                    if (option === '--log-opt') {
+                        const raw = valueFromEquals !== null ? valueFromEquals : tokens[i+1];
+                        const [optKey, optVal = ''] = raw.split('=');
+                        if (optKey) {
+                            config.services[service].logging.options[optKey] = optVal;
+                        }
+                        i += valueFromEquals !== null ? 1 : 2;
+                        continue;
+                    }
+                    
                     // 网络
-                    if (token === '--network') {
-                        const network = tokens[i+1];
+                    if (option === '--network') {
+                        const value = valueFromEquals !== null ? valueFromEquals : tokens[i+1];
+                        const network = value;
                         config.services[service].networks.push(network);
                         
                         if (!config.networks[network]) {
                             config.networks[network] = { external: true };
                         }
-                        i += 2;
+                        i += valueFromEquals !== null ? 1 : 2;
                         continue;
                     }
                     
@@ -412,6 +471,14 @@ services:
                         yaml += `    container_name: ${sConfig.container_name}\n`;
                     }
                     
+                    if (sConfig.hostname) {
+                        yaml += `    hostname: ${sConfig.hostname}\n`;
+                    }
+                    
+                    if (sConfig.working_dir) {
+                        yaml += `    working_dir: ${sConfig.working_dir}\n`;
+                    }
+                    
                     if (sConfig.ports.length > 0) {
                         yaml += `    ports:\n`;
                         sConfig.ports.forEach(p => yaml += `      - ${p}\n`);
@@ -425,6 +492,19 @@ services:
                     if (sConfig.environment.length > 0) {
                         yaml += `    environment:\n`;
                         sConfig.environment.forEach(e => yaml += `      - ${e}\n`);
+                    }
+                    
+                    if (sConfig.labels && sConfig.labels.length > 0) {
+                        yaml += `    labels:\n`;
+                        sConfig.labels.forEach(l => yaml += `      - ${l}\n`);
+                    }
+                    
+                    if (sConfig.logging && sConfig.logging.options && Object.keys(sConfig.logging.options).length > 0) {
+                        yaml += `    logging:\n`;
+                        yaml += `      options:\n`;
+                        for (const [logKey, logVal] of Object.entries(sConfig.logging.options)) {
+                            yaml += `        ${logKey}: "${logVal}"\n`;
+                        }
                     }
                     
                     if (sConfig.networks.length > 0) {
